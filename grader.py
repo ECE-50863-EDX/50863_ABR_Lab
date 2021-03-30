@@ -4,15 +4,8 @@ import threading
 import sys
 
 #This file was written by Zach Peats
-#This program repeatedly invokes Simulator.py and studentComm.py in order to run multiple testcases autonomously
+#This program repeatedly invokes simulator.py in order to run multiple testcases autonomously
 #For more information check out the readme
-
-
-
-def run_student_code():
-    subprocess.run(['python', 'studentComm.py'])
-    return
-
 
 if __name__ == "__main__":
 
@@ -42,14 +35,8 @@ if __name__ == "__main__":
         manifestpath = testpath + manifestfilename
         tracepath = testpath + tracefilename
 
-        #Run student process
-        student_thread = threading.Thread(target=run_student_code)
-        student_thread.start()
-
         #run simulator process
         output = subprocess.run(['python', 'simulator.py', tracepath, manifestpath, verboseflag], capture_output=True )
-
-        student_thread.join()
 
         #decode output and come up with a final score
 

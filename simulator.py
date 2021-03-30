@@ -1,13 +1,12 @@
 import sys
 import json
-from Classes import SimBuffer, NetworkTrace, Scorecard, simulator_comm
+from Classes import SimBuffer, NetworkTrace, Scorecard
+from student import student
 
 #this file was written by Zach Peats
 #This is the video download and playback simulator for an ABR algorithm lab.
 #The program simulates a video stream over a network, using a network trace and a video manifest
 #for more information regarding usage and file specifications, check out the readme
-
-
 
 verbose = False
 
@@ -108,7 +107,7 @@ if __name__ == "__main__":
 
 
         #send info to student, get response
-        chosen_bitrate = simulator_comm.send_req_json(m_band, prev_throughput, buf_occ, av_bitrates, current_time, chunk_arg, rebuff_time, pref_bitrate)
+        chosen_bitrate = student.student_entrypoint(m_band, prev_throughput, buf_occ, av_bitrates, current_time, chunk_arg, rebuff_time, pref_bitrate)
 
 
         #bad response checking, ensure chunk fits in buffer
@@ -149,10 +148,6 @@ if __name__ == "__main__":
 
         #get next chunk
         chunknum, chunk = next(chunk_iter, (None, None))
-
-
-    #cleanup and return
-    simulator_comm.send_exit()
 
     if(verbose):
         logger.output_verbose()
