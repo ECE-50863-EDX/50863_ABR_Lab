@@ -1,82 +1,52 @@
-
-#this file was written by Zach Peats
-#A class that represents the video playback buffer.
+# Adapted from code by Zach Peats
 
 class SimBuffer:
+    """
+    A class to hold and simulate a buffer
+    """
+    def __init__(self, chunk_duration: float):
+        """
+        Args:
+            chunk_duration : Number of seconds of video each cunk carries.
+        """
+        self.chunk_duration = chunk_duration
 
-    def __init__(self, bufsize):
-        self.size = bufsize
-        self.chunks = [] #each chunk object is a tuple (size, chunk_time)
-        self.time = 0
-        self.cur_size = 0
-        self.mid_chunk_time = 0
+        self.seconds_left = 0
+        self.chunks = []
+        self.seconds_played = 0
 
-
-    def get_student_params(self):
-        params = {}
-        params["size"] = self.size
-        params["current"] = self.cur_size
-        params["time"] = self.time
-        return params
-
-    def available_space(self):
-        #self.buffer_relative_time()
-        return self.size - self.cur_size
-
-    def sim_chunk_download(self, chunk_size, chunk_time, playback_time):
-        if chunk_size > self.size - self.cur_size:
-            print("Error: Chunk being added is too large to fit into buffer")
-            return False
-
-        buffer_time = self.sim_playback(playback_time)
-
-        self.chunks.append((chunk_size,chunk_time))
-        self.calculate_occupancy()
-        self.calculate_time()
-        return buffer_time
-
-
-    def calculate_occupancy(self):
-        self.cur_size = 0
-        for chunk in self.chunks:
-            self.cur_size += chunk[0]
-
-    def burn_time(self, time):
-        buffer_time = self.sim_playback(time)
-        self.calculate_occupancy()
-        self.calculate_time()
-        return buffer_time
-
-    def sim_playback(self, playback_time):
-
-        while playback_time > 0:
-
-            #if there are any chunks to be played
-            if self.chunks:
-                current_chunk = self.chunks.pop(0)
-
-                chunk_time_remaining = current_chunk[1]
-
-                playback_time -= chunk_time_remaining
-
-                if playback_time < 0:
-                    chunk_time_remaining = -1 * playback_time
-                    self.chunks.insert(0, (current_chunk[0], chunk_time_remaining))
-                    return 0
-
-
-            #no chunks left to be played, buffering
-            else:
-                return playback_time
-
-        #all playback was simulated, return 0 buffer time
+    def get_occupancy(self) -> float:
+        """ Returns #kB in the buffer. """
+        current_chunk = int(self.seconds_played // self.chunk_duration + .001)  # .001 in case of rounding errors
+        if current_chunk < len(self.chunks):
+            return sum(self.chunks[current_chunk:])
         return 0
 
-    def calculate_time(self):
+    def sim_chunk_download(self, chunk_size: float, playback_time) -> float:
+        """
+        Simulates a chunk download. Adds this chunk to the buffer and reduces the buffer by enough chunks to play
+        playback_time. Returns number of seconds rebuffered, or 0 if no rebuffer.
+        Args:
+            chunk_size : Size of incoming chunk in kB.
+            playback_time : Number of seconds to remove from buffer
 
-        totaltime = 0
-        for chunk in self.chunks:
-            totaltime += chunk[1]
+        :return: float Number of seconds rebuffered
+        """
+        rebuffer_time = self.burn_time(playback_time)
+        self.chunks.append(chunk_size)
+        self.seconds_left += self.chunk_duration
+        return rebuffer_time
 
-        self.time = totaltime
-        return
+    def burn_time(self, playback_time: float) -> float:
+        """
+        Reduces the buffer by enough chunks to play for playback_time. Returns number of seconds rebuffered,
+        or 0 if no rebuffer.
+        Args:
+            playback_time : Number of seconds to remove from buffer
+
+        :return: float Number of seconds rebuffered
+        """
+        rebuffer_time = max(playback_time - self.seconds_left, 0)
+        self.seconds_left = max(self.seconds_left - playback_time, 0)
+        self.seconds_played += min(playback_time, self.seconds_left)
+        return rebuffer_time

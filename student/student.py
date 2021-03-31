@@ -1,98 +1,156 @@
-# Written by Nathan A-M =^)
-# Buffer-based implementation using
-# A Buffer-based approach as a reference
+from typing import List
 
-bitrate = 0  # used to save previous bitrate
+# Adapted from code by Zach Peats
 
-
-def student_entrypoint(Measured_Bandwidth, Previous_Throughput, Buffer_Occupancy, Available_Bitrates, Video_Time, Chunk,
-                       Rebuffering_Time, Preferred_Bitrate):
-    # student can do whatever they want from here going forward
-    global bitrate
-    R_i = list(Available_Bitrates.items())
-    R_i.sort(key=lambda tup: tup[1], reverse=True)
-    bitrate = bufferbased(rate_prev=bitrate, buf_now=Buffer_Occupancy, r=Chunk['time'] + 1, R_i=R_i)
-    return bitrate
+# ======================================================================================================================
+# Do not touch the client message class!
+# ======================================================================================================================
 
 
-# helper function, to find the corresponding size of previous bitrate
-def match(value, list_of_list):
-    for e in list_of_list:
-        if value == e[1]:
-            return e
+class ClientMessage:
+	"""
+	This class will be filled out and passed to student_entrypoint for your algorithm.
+	"""
+	total_seconds_elapsed: float	  # The number of simulated seconds elapsed in this test
+	previous_throughput: float		  # The measured throughput for the previous chunk in kB/s
+
+	buffer_current_fill: float		  # The number of kB currently in the client buffer
+	buffer_seconds_per_chunk: float     # Number of seconds that it takes the client to watch a chunk. Every
+										# buffer_seconds_per_chunk, a chunk is consumed from the client buffer.
+	buffer_seconds_until_empty: float   # The number of seconds of video left in the client buffer. A chunk must
+										# be finished downloading before this time to avoid a rebuffer event.
+
+	# The quality bitrates are formatted as follows:
+	#
+	#   quality_levels is an integer reflecting the # of quality levels you may choose from.
+	#
+	#   quality_bitrates is a list of floats specifying the number of kilobytes the upcoming chunk is at each quality
+	#   level. It always scales linearly with quality level.
+	#       quality_bitrates[0] = kB cost for quality level 0
+	#       quality_bitrates[1] = kB cost for quality level 1
+	#       ...
+	#
+	#   upcoming_quality_bitrates is a list of quality_bitrates for future chunks. Each entry is a list of
+	#   quality_bitrates that will be used for an upcoming chunk. Use this for algorithms that look forward multiple
+	#   chunks in the future. Will shrink and eventually become empty as streaming approaches the end of the video.
+	#       upcoming_quality_bitrates[0]: Will be used for quality_bitrates in the next student_entrypoint call
+	#       upcoming_quality_bitrates[1]: Will be used for quality_bitrates in the student_entrypoint call after that
+	#       ...
+	#
+	quality_levels: int
+	quality_bitrates: List[float]
+	upcoming_quality_bitrates: List[List[float]]
+
+	# You may use these to tune your algorithm to each user case!
+	#
+	#   User Quality of Experience =    (Average chunk quality) * (Quality Coefficient) +
+	#                                   -(Number of changes in chunk quality) * (Variation Coefficient)
+	#                                   -(Amount of time spent rebuffering) * (Rebuffering Coefficient)
+	#
+	#   *QoE is then divided by total number of chunks
+	#
+	quality_coefficient: float
+	variation_coefficient: float
+	rebuffering_coefficient: float
+# ======================================================================================================================
 
 
-# helper function, to find the corresponding size of previous bitrate
-# if there's was no previous assume that it was the highest possible value
-def prevmatch(value, list_of_list):
-    for e in list_of_list:
-        if value == e[1]:
-            return e
-    value = max(i[1] for i in list_of_list)
-    for e in list_of_list:
-        if value == e[1]:
-            return e
+# Your helper functions, variables, classes here. You may also write initialization routines to be called
+# when this script is first imported and anything else you wish.
 
 
-def bufferbased(rate_prev, buf_now, r, R_i, cu=126):
-    '''
-    Input:
-    rate_prev: The previously used video rate
-    Buf_now: The current buffer occupancy
-    r: The size of reservoir  //At least greater than Chunk Time
-    cu: The size of cushion //between 90 to 216, paper used 126
-    R_i: Array of bitrates of videos, key will be bitrate, and value will be the byte size of the chunk
+def student_entrypoint(client_message: ClientMessage):
+	"""
+	Your mission, if you choose to accept it, is to build an algorithm for chunk bitrate selection that provides
+	the best possible experience for users streaming from your service.
 
-    Output:
-    Rate_next: The next video rate
-    '''
+	Construct an algorithm below that selects a quality for a new chunk given the parameters in ClientMessage. Feel
+	free to create any helper function, variables, or classes as you wish.
 
-    R_max = max(i[1] for i in R_i)
-    R_min = min(i[1] for i in R_i)
-    rate_prev = prevmatch(rate_prev, R_i)
+	Simulation does ~NOT~ run in real time. The code you write can be as slow and complicated as you wish without
+	penalizing your results. Focus on picking good qualities!
 
-    # set rate_plus to lowest reasonable rate
-    if rate_prev[1] == R_max:
-        rate_plus = R_max
-    else:
-        more_rate_prev = list(i[1] for i in R_i if i[1] > rate_prev[1])
-        if more_rate_prev == []:
-            rate_plus = rate_prev[1]
-        else:
-            rate_plus = min(more_rate_prev)
+	Args:
+		client_message : ClientMessage holding the parameters for this chunk and current client state.
 
-    # set rate_min to highest reasonable rate
-    if rate_prev[1] == R_min:
-        rate_mins = R_min
-    else:
-        less_rate_prev = list(i[1] for i in R_i if i[1] < rate_prev[1])
-        if less_rate_prev == []:
-            rate_mins = rate_prev[1]
-        else:
-            rate_mins = max(less_rate_prev)
+	:return: float Your quality choice. Must be one in the range [0 ... quality_levels] inclusive.
+	"""
+	return MPC(client_message)
 
-    # Buffer based Algorithm
-    if buf_now['time'] <= r:  # 1st check if buffer time is too small, set to R_min
-        rate_next = R_min
-        rate_next = match(R_min, R_i)[0]
-    elif buf_now['time'] >= (r + cu):  # too big, set R_max
-        rate_next = R_max
-        rate_next = match(R_max, R_i)[0]
-    elif buf_now['current'] >= rate_plus:  # check if big enough get a different reasonable rate
-        less_buff_now = list(i[1] for i in R_i if i[1] < buf_now['current'])
-        if less_buff_now == []:
-            rate_next = rate_prev[0]
-        else:
-            rate_next = max(less_buff_now)
-            rate_next = match(rate_next, R_i)[0]
-    elif buf_now['current'] <= rate_mins:  # check if small enough for a different reasonable rate
-        more_buff_now = list(i[1] for i in R_i if i[1] > buf_now['current'])
-        if more_buff_now == []:
-            rate_next = rate_prev[0]
-        else:
-            rate_next = min(more_buff_now)
-            rate_next = match(rate_next, R_i)[0]
-    else:
-        rate_next = rate_prev[0]  # else give up and try again next time
 
-    return rate_next
+# ======================================================================================================================
+#
+# Tanner's code below!
+#
+# ======================================================================================================================
+
+def HYB(client_message: ClientMessage):
+	""" Quick and dirty HYB implementation. Uses the previous chunk throughput as a current throughput prediction. """
+	cm = client_message
+	if cm.previous_throughput == 0:
+		return 0
+	valid_throughputs = [
+		i for i in range(cm.quality_levels)
+		if cm.quality_bitrates[i] / cm.previous_throughput < cm.buffer_seconds_until_empty
+	]
+	return max(valid_throughputs) if valid_throughputs else 0
+
+
+# Params for MPC
+LOOKAHEAD = 5  # Lookahead 5 chunks
+prev_choice = None  # Used to hold previous quality level
+
+
+def MPC(client_message: ClientMessage):
+	"""
+	MPC algorithm from https://dl.acm.org/doi/pdf/10.1145/2785956.2787486
+	Instead of solving optimization problem, uses an exhaustive search of all possibilities.
+	Skips startup phase.
+	Uses previous chunk throughput for current block
+	"""
+	global prev_choice
+
+	def qos_predict(upcoming_quality_bitrates, seconds_in_buffer, throughput, last_quality):
+		# Default to zero score for no options
+		if not upcoming_quality_bitrates:
+			return 0, []
+		# Choose low quality if no throughput prediction
+		if throughput == 0:
+			return 0, [0]
+		# Get bitrate options and initialize best calculated QoS and bitrate choices
+		bitrate_options = upcoming_quality_bitrates[0]
+		best_qos, best_choices = -1000000000, [0]
+		# Brute force enumeration of all possibilites
+		for i in range(len(bitrate_options)):
+			# Calculate parameters
+			download_time = bitrate_options[i] / throughput
+			rebuff_time = max(download_time - seconds_in_buffer, 0)
+
+			# Find best QOS for the rest of the chunks assuming we picked i
+			qos, choices = \
+				qos_predict(upcoming_quality_bitrates[1:], max(seconds_in_buffer - download_time, 0), throughput, i)
+
+			# Calculate QOS
+			qos =   \
+				qos + client_message.quality_coefficient * i - \
+				(client_message.variation_coefficient if last_quality is not None and i != last_quality else 0) - \
+				client_message.rebuffering_coefficient * rebuff_time
+
+			# If this is better than the best, this is the best
+			if qos > best_qos:
+				best_qos = qos
+				best_choices = [i] + choices
+
+		# Return the best calculated QoS and quality choices
+		return best_qos, best_choices
+
+	pred_qos, chosen_qualities = qos_predict(
+		[client_message.quality_bitrates] +
+		client_message.upcoming_quality_bitrates[:min(len(client_message.upcoming_quality_bitrates), LOOKAHEAD)],
+		client_message.buffer_seconds_until_empty,
+		client_message.previous_throughput,
+		prev_choice
+	)
+	print(f'Predicted {chosen_qualities} with a QoS of {pred_qos}')
+	prev_choice = chosen_qualities[0]
+	return chosen_qualities[0]
